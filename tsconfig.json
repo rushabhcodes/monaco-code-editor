@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
     // Environment setup & latest features
-    "lib": ["ESNext"],
+    "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "target": "ESNext",
     "module": "Preserve",
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "allowJs": true,
+    "ignoreDeprecations": "6.0",
+    "types": ["bun-types"],
 
     // Bundler mode
     "moduleResolution": "bundler",
@@ -26,5 +28,5 @@
     "noUnusedParameters": false,
     "noPropertyAccessFromIndexSignature": false
   },
-  "include": ["src"]
+  "include": ["src", "examples", "cosmos", "vite.config.ts"]
 }
