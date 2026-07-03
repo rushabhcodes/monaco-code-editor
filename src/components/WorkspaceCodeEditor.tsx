@@ -12,6 +12,13 @@ import {
   createMonacoWorkspaceModelManager,
   type MonacoWorkspaceModelManager,
 } from "../monaco/monacoWorkspace"
+import { prepareMonacoTypeScriptWorkspace } from "../monaco/monacoTypeScript"
+import {
+  getWorkspaceFileSetKey,
+  getWorkspaceTypeAcquisitionSource,
+  isWorkspaceLoadPending,
+  orderWorkspaceFilesForModelCreation,
+} from "../monaco/workspaceReadiness"
 import { isHiddenFile } from "../utils/isHiddenFile"
 import { FileSidebar } from "./FileSidebar"
 import {
@@ -109,6 +116,10 @@ export function WorkspaceCodeEditor({
   isSaving = false,
   isStreaming = false,
   isPriorityFileFetched,
+  isFullyLoaded,
+  totalFilesCount,
+  loadedFilesCount,
+  pkgFilesLoaded,
   showSidebar = true,
   className,
   height = "100%",
@@ -116,7 +127,9 @@ export function WorkspaceCodeEditor({
 }: WorkspaceCodeEditorProps) {
   const isReady = useMonacoReady()
   const [editorReady, setEditorReady] = useState(false)
-  const [workspaceModelsReady, setWorkspaceModelsReady] = useState(false)
+  const [preparedWorkspaceKey, setPreparedWorkspaceKey] = useState<
+    string | null
+  >(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -146,6 +159,12 @@ export function WorkspaceCodeEditor({
   currentContentRef.current = currentContent
   const currentFileIsBinary = currentFileData?.isBinary === true
   const isPriorityFilePending = isPriorityFileFetched === false
+  const isWorkspacePending = isWorkspaceLoadPending({
+    isFullyLoaded,
+    totalFilesCount,
+    loadedFilesCount,
+    pkgFilesLoaded,
+  })
   const workspaceFiles = useMemo(
     () =>
       files
@@ -153,6 +172,20 @@ export function WorkspaceCodeEditor({
         .map((file) => ({ path: file.path, content: file.content })),
     [files],
   )
+  const workspaceKey = getWorkspaceFileSetKey(workspaceFiles)
+  const workspaceTypeSource = useMemo(
+    () => getWorkspaceTypeAcquisitionSource(workspaceFiles),
+    [workspaceFiles],
+  )
+  const isWorkspacePrepared =
+    isReady && !isWorkspacePending && preparedWorkspaceKey === workspaceKey
+
+  // Acquire dependencies only after Monaco can see the complete local module
+  // graph. Scanning every code file also covers imports outside the active file.
+  const areTypesReady = useTscircuitTypeAcquisition(workspaceTypeSource, {
+    enabled: isWorkspacePrepared && isCodeFile(currentFile),
+    readinessKey: workspaceKey,
+  })
 
   // Files offered in the top-bar dropdown: hide noise (lockfiles, dist, …) but
   // always keep the active file selectable even when it is itself hidden.
@@ -183,27 +216,47 @@ export function WorkspaceCodeEditor({
   // Keep a live model for every (text) file so the TypeScript language service
   // can resolve cross-file imports and surface diagnostics project-wide.
   useLayoutEffect(() => {
-    if (!isReady) {
-      setWorkspaceModelsReady(false)
+    if (!isReady || isWorkspacePending) {
+      setPreparedWorkspaceKey(null)
       return
     }
 
-    managerRef.current?.syncFiles(workspaceFiles)
-    setWorkspaceModelsReady(true)
-  }, [isReady, workspaceFiles])
+    const manager = managerRef.current
+    if (!manager) return
 
-  // Monaco's TS worker can occasionally compute diagnostics before it has seen
-  // the full workspace graph on the first load. Re-sync once after the editor
-  // mounts to force a fresh pass without requiring a manual page refresh.
-  useEffect(() => {
-    if (!isReady || !editorReady) return
+    const orderedFiles = orderWorkspaceFilesForModelCreation(
+      workspaceFiles,
+      currentFile,
+    )
+    manager.syncFiles(orderedFiles)
 
-    const timeoutId = window.setTimeout(() => {
-      managerRef.current?.syncFiles(workspaceFiles)
-    }, 0)
+    if (preparedWorkspaceKey === workspaceKey) return
 
-    return () => window.clearTimeout(timeoutId)
-  }, [isReady, editorReady, workspaceFiles])
+    setPreparedWorkspaceKey(null)
+    const codeModelUris = orderedFiles
+      .filter((file) => isCodeFile(file.path))
+      .map((file) => manager.getUri(file.path))
+
+    let isActive = true
+    void prepareMonacoTypeScriptWorkspace(codeModelUris)
+      .then(() => {
+        if (isActive) setPreparedWorkspaceKey(workspaceKey)
+      })
+      .catch((error) => {
+        console.warn("Failed to prepare TypeScript workspace", error)
+      })
+
+    return () => {
+      isActive = false
+    }
+  }, [
+    isReady,
+    isWorkspacePending,
+    workspaceFiles,
+    workspaceKey,
+    currentFile,
+    preparedWorkspaceKey,
+  ])
 
   // Route cross-file "go to definition" through onFileSelect so navigation into
   // another workspace file switches the active file instead of failing silently.
@@ -258,11 +311,6 @@ export function WorkspaceCodeEditor({
     }
   }, [currentFile, isReady, editorReady, files])
 
-  // Acquire tscircuit/dependency types for the active file (debounced).
-  useTscircuitTypeAcquisition(currentContent, {
-    enabled: isReady && isCodeFile(currentFile),
-  })
-
   const handleMount: OnMount = (editorInstance) => {
     editorRef.current = editorInstance
     if (currentFile) {
@@ -294,7 +342,11 @@ export function WorkspaceCodeEditor({
     )
   } else if (currentFileIsBinary) {
     editorBody = <BinaryFileNotice downloadUrl={currentFileData?.downloadUrl} />
-  } else if (!isReady || !workspaceModelsReady || isPriorityFilePending) {
+  } else if (
+    !isWorkspacePrepared ||
+    (isCodeFile(currentFile) && !areTypesReady) ||
+    isPriorityFilePending
+  ) {
     editorBody = <CenteredMessage>Loading editor…</CenteredMessage>
   } else if (currentFile) {
     editorBody = (
