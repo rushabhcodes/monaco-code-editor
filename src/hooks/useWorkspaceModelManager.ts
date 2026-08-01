@@ -41,13 +41,12 @@ export function useWorkspaceModelManager({
     string | null
   >(null)
 
-  // Dispose every model this hook created when the owner unmounts.
   useEffect(() => {
     return () => manager.dispose()
   }, [manager])
 
   useLayoutEffect(() => {
-    if (!isReady || !enableTypeScriptLanguageService) {
+    if (!isReady) {
       setPreparedWorkspaceKey(null)
       return
     }
@@ -58,8 +57,11 @@ export function useWorkspaceModelManager({
     )
     manager.syncFiles(orderedFiles)
 
-    // Keep the active model usable as files stream in, but wait until the
-    // workspace settles before initializing the full TypeScript worker graph.
+    if (!enableTypeScriptLanguageService) {
+      setPreparedWorkspaceKey(null)
+      return
+    }
+
     if (isWorkspacePending) {
       setPreparedWorkspaceKey(null)
       return
