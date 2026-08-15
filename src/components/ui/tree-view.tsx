@@ -29,7 +29,26 @@ interface TreeDataItem {
   onContextMenu?: (e: React.MouseEvent) => void
 }
 
+function selectRenameName(input: HTMLInputElement) {
+  const lastDotIndex = input.value.lastIndexOf(".")
+  const selectionEnd = lastDotIndex > 0 ? lastDotIndex : input.value.length
+  input.setSelectionRange(0, selectionEnd)
+}
+
 function RenameInput({ item }: { item: TreeDataItem }) {
+  const inputRef = React.useRef<HTMLInputElement>(null)
+
+  React.useEffect(() => {
+    const input = inputRef.current
+    if (!input) return
+
+    const frame = requestAnimationFrame(() => {
+      input.focus()
+      selectRenameName(input)
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [])
+
   const finishRename = (input: HTMLInputElement) => {
     const value = input.value.trim()
     if (value && value !== item.name) {
@@ -41,6 +60,7 @@ function RenameInput({ item }: { item: TreeDataItem }) {
 
   return (
     <Input
+      ref={inputRef}
       style={{ zIndex: 50 }}
       defaultValue={item.name as string}
       onKeyDown={(event) => {
@@ -55,16 +75,9 @@ function RenameInput({ item }: { item: TreeDataItem }) {
       spellCheck={false}
       autoComplete="off"
       onBlur={(event) => finishRename(event.currentTarget)}
-      autoFocus
+      onMouseDown={(event) => event.stopPropagation()}
       onClick={(event) => event.stopPropagation()}
       className="h-6 w-full rounded-sm border border-blue-500 bg-white px-2 py-0 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-      onFocus={(event) => {
-        event.currentTarget.select()
-        const lastDotIndex = event.currentTarget.value.lastIndexOf(".")
-        if (lastDotIndex > 0) {
-          event.currentTarget.setSelectionRange(0, lastDotIndex)
-        }
-      }}
     />
   )
 }
