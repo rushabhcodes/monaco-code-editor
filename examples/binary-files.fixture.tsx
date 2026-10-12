@@ -55,6 +55,19 @@ function BinaryFilesFixture({
         type: "application/octet-stream",
       }),
     )
+    const largeFileUrl = URL.createObjectURL(
+      new Blob([pngBytes, new Uint8Array(5 * 1024 * 1024)], {
+        type: "image/png",
+      }),
+    )
+    const largeDimensionsUrl = URL.createObjectURL(
+      new Blob(
+        [
+          '<svg xmlns="http://www.w3.org/2000/svg" width="100000" height="100000"><rect width="100000" height="100000" fill="#186c43" /></svg>',
+        ],
+        { type: "image/svg+xml" },
+      ),
+    )
 
     setFiles([
       {
@@ -77,6 +90,12 @@ function BinaryFilesFixture({
         downloadUrl: png,
       },
       { path: "missing.png", content: "", isBinary: true },
+      { path: "large-file.png", content: largeFileUrl, isBinary: true },
+      {
+        path: "large-dimensions.svg",
+        content: largeDimensionsUrl,
+        isBinary: true,
+      },
       {
         path: "board.step",
         content: stepUrl,
@@ -97,6 +116,8 @@ function BinaryFilesFixture({
     return () => {
       URL.revokeObjectURL(blobUrl)
       URL.revokeObjectURL(stepUrl)
+      URL.revokeObjectURL(largeFileUrl)
+      URL.revokeObjectURL(largeDimensionsUrl)
     }
   }, [])
 
@@ -140,4 +161,8 @@ export default {
   "Missing image URL": <BinaryFilesFixture initialCurrentFile="missing.png" />,
   "Unsupported binary": <BinaryFilesFixture initialCurrentFile="board.step" />,
   "Editable SVG": <BinaryFilesFixture initialCurrentFile="board.svg" />,
+  "Large file": <BinaryFilesFixture initialCurrentFile="large-file.png" />,
+  "Large dimensions": (
+    <BinaryFilesFixture initialCurrentFile="large-dimensions.svg" />
+  ),
 }

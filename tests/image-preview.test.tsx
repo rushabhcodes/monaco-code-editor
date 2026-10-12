@@ -13,11 +13,12 @@ const file = {
 test.each([
   file.downloadUrl,
   undefined,
-])("previews PNG content and keeps a download link (%s)", (downloadUrl) => {
+])("waits for size checks and keeps a download link (%s)", (downloadUrl) => {
   const markup = renderToStaticMarkup(
     <BinaryFilePreview file={{ ...file, downloadUrl }} />,
   )
-  expect(markup).toContain(`src="${file.content}"`)
+  expect(markup).not.toContain("<img")
+  expect(markup).toContain("Checking image size")
   expect(markup).toContain(`href="${downloadUrl ?? file.content}"`)
 })
 

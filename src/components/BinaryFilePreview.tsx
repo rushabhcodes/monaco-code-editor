@@ -1,23 +1,68 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { getImagePreviewUrl } from "../utils/getImagePreviewUrl"
+import {
+  ImagePreviewLimitError,
+  loadImagePreview,
+} from "../utils/loadImagePreview"
 import type { EditorFile } from "./WorkspaceCodeEditor"
 
 export function BinaryFilePreview({ file }: { file: EditorFile }) {
   const imageUrl = getImagePreviewUrl(file)
-  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null)
+  const [preview, setPreview] = useState<{
+    source: string
+    url?: string
+    error?: "large" | "unavailable"
+  } | null>(null)
   const downloadUrl = file.downloadUrl || imageUrl
 
-  if (!imageUrl || failedImageUrl === imageUrl) {
+  useEffect(() => {
+    if (!imageUrl) return
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), 10_000)
+    let active = true
+    let objectUrl: string | undefined
+    void loadImagePreview(imageUrl, controller.signal)
+      .then((blob) => {
+        if (!active) return
+        objectUrl = URL.createObjectURL(blob)
+        setPreview({ source: imageUrl, url: objectUrl })
+      })
+      .catch((error) => {
+        if (!active) return
+        setPreview({
+          source: imageUrl,
+          error:
+            error instanceof ImagePreviewLimitError ? "large" : "unavailable",
+        })
+      })
+      .finally(() => clearTimeout(timeout))
+    return () => {
+      active = false
+      clearTimeout(timeout)
+      controller.abort()
+      if (objectUrl) URL.revokeObjectURL(objectUrl)
+    }
+  }, [imageUrl])
+
+  const currentPreview = preview?.source === imageUrl ? preview : null
+  if (!currentPreview?.url) {
+    const status = !imageUrl ? "binary" : (currentPreview?.error ?? "loading")
+    const [title, message] = {
+      binary: ["Binary file", "This file cannot be displayed in the editor."],
+      large: [
+        "Image too large",
+        "This image is too large to preview. Download it to view.",
+      ],
+      unavailable: [
+        "Image preview unavailable",
+        "This image could not be loaded.",
+      ],
+      loading: ["Loading image preview…", "Checking image size…"],
+    }[status]
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 font-sans text-slate-500">
-        <p className="font-semibold">
-          {imageUrl ? "Image preview unavailable" : "Binary file"}
-        </p>
-        <p className="text-[13px]">
-          {imageUrl
-            ? "This image could not be loaded."
-            : "This file cannot be displayed in the editor."}
-        </p>
+        <p className="font-semibold">{title}</p>
+        <p className="text-[13px]">{message}</p>
         {downloadUrl && <DownloadLink url={downloadUrl} path={file.path} />}
       </div>
     )
@@ -35,8 +80,9 @@ export function BinaryFilePreview({ file }: { file: EditorFile }) {
         }}
       >
         <img
-          src={imageUrl}
+          src={currentPreview.url}
           alt={file.path}
+          decoding="async"
           draggable={false}
           style={{
             width: "100%",
@@ -44,7 +90,9 @@ export function BinaryFilePreview({ file }: { file: EditorFile }) {
             objectFit: "contain",
             padding: "16px",
           }}
-          onError={() => setFailedImageUrl(imageUrl)}
+          onError={() =>
+            setPreview({ source: imageUrl!, error: "unavailable" })
+          }
         />
       </div>
       {downloadUrl && (
