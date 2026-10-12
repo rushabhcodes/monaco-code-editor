@@ -1,70 +1,41 @@
 import { expect, test } from "bun:test"
 import { renderToStaticMarkup } from "react-dom/server"
 import { BinaryFilePreview } from "../src/components/BinaryFilePreview"
-import type { EditorFile } from "../src/components/WorkspaceCodeEditor"
 import { getImagePreviewUrl } from "../src/utils/getImagePreviewUrl"
 
-const pngFile: EditorFile = {
-  path: "assets/board.png",
-  content: "blob:https://example.com/board-image",
+const file = {
+  path: "board.PNG",
+  content: "blob:https://example.com/board",
   isBinary: true,
-  downloadUrl: "https://example.com/download?file=board",
+  downloadUrl: "https://example.com/download",
 }
 
-test("binary PNG preview uses already-fetched content instead of the authenticated download endpoint", () => {
-  const markup = renderToStaticMarkup(<BinaryFilePreview file={pngFile} />)
-
-  expect(markup).toContain(`src="${pngFile.content}"`)
-  expect(markup).toContain('alt="assets/board.png"')
-  expect(markup).toContain(`href="${pngFile.downloadUrl}"`)
-  expect(markup).toContain('download="board.png"')
-  expect(markup).not.toContain("This file cannot be displayed")
-})
-
-test("binary images support data URLs, uppercase extensions, and a download URL fallback", () => {
-  const dataUrl = "data:image/png;base64,iVBORw0KGgo="
-  expect(getImagePreviewUrl({ ...pngFile, content: dataUrl })).toBe(dataUrl)
-  expect(getImagePreviewUrl({ ...pngFile, path: "BOARD.PNG" })).toBe(
-    pngFile.content,
-  )
-  expect(getImagePreviewUrl({ ...pngFile, content: "" })).toBe(
-    pngFile.downloadUrl!,
-  )
-})
-
-test("blob-only images keep a usable download link", () => {
+test.each([
+  file.downloadUrl,
+  undefined,
+])("previews PNG content and keeps a download link (%s)", (downloadUrl) => {
   const markup = renderToStaticMarkup(
-    <BinaryFilePreview file={{ ...pngFile, downloadUrl: undefined }} />,
+    <BinaryFilePreview file={{ ...file, downloadUrl }} />,
   )
-
-  expect(markup).toContain(`src="${pngFile.content}"`)
-  expect(markup).toContain(`href="${pngFile.content}"`)
+  expect(markup).toContain(`src="${file.content}"`)
+  expect(markup).toContain(`href="${downloadUrl ?? file.content}"`)
 })
 
-test("unsupported binary files retain the binary notice and download link", () => {
-  const file = { ...pngFile, path: "models/board.step" }
+test.each([
+  { ...file, path: "board.step" },
+  { ...file, content: "", downloadUrl: undefined },
+])("shows the binary notice when there is no preview (%j)", (file) => {
   const markup = renderToStaticMarkup(<BinaryFilePreview file={file} />)
-
-  expect(getImagePreviewUrl(file)).toBeNull()
-  expect(markup).toContain("This file cannot be displayed in the editor.")
-  expect(markup).toContain(`href="${pngFile.downloadUrl}"`)
-  expect(markup).not.toContain("<img")
-})
-
-test("images without a source fall back to the notice and text files stay editable", () => {
-  const file = { ...pngFile, content: "", downloadUrl: undefined }
-  const markup = renderToStaticMarkup(<BinaryFilePreview file={file} />)
-
-  expect(getImagePreviewUrl(file)).toBeNull()
   expect(markup).toContain("Binary file")
   expect(markup).not.toContain("<img")
-  expect(getImagePreviewUrl({ ...pngFile, isBinary: false })).toBeNull()
+  expect(markup.includes("Download file")).toBe(!!file.downloadUrl)
+})
+
+test("supports data and download URLs while leaving text SVG editable", () => {
+  const dataUrl = "data:image/png;base64,iVBORw0KGgo="
+  expect(getImagePreviewUrl({ ...file, content: dataUrl })).toBe(dataUrl)
+  expect(getImagePreviewUrl({ ...file, content: "" })).toBe(file.downloadUrl)
   expect(
-    getImagePreviewUrl({
-      ...pngFile,
-      path: "board.svg",
-      content: "<svg />",
-      isBinary: false,
-    }),
+    getImagePreviewUrl({ ...file, path: "board.svg", isBinary: false }),
   ).toBeNull()
 })

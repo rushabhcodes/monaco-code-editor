@@ -64,34 +64,3 @@ The ref exposes:
 
 Press `Ctrl+P` or `Cmd+P` to fuzzy-search workspace files from the keyboard.
 Press `Ctrl+Shift+F` or `Cmd+Shift+F` to find and replace text across files.
-
-Binary image files (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO, and SVG) open in an
-image preview with a download link. Set `isBinary: true` and provide a blob URL
-or image data URL in `content`, or a `downloadUrl` when no local URL is available.
-Text SVG files remain editable. Other binary files show a download notice.
-
-```tsx
-const files: EditorFile[] = [
-  {
-    path: "board.png",
-    content: URL.createObjectURL(pngBlob),
-    isBinary: true,
-    downloadUrl: "/files/board.png",
-  },
-  {
-    path: "photo.jpg",
-    content: "data:image/jpeg;base64,...",
-    isBinary: true,
-  },
-]
-```
-
-The file loader owns blob URLs and should revoke them when they are no longer
-needed. The preview prefers `content` so authenticated files do not need a
-second download request.
-
-Run `bun run dev` and open the `binary-files` fixtures to try PNG blob URLs,
-JPEG data URLs, download URLs, failed and missing images, unsupported binary
-files, and editable SVG source. Each fixture includes a file sidebar so you
-can switch between images and code. Sample images are generated locally;
-the examples do not need a network connection.
